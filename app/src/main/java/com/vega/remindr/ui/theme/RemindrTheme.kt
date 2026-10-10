@@ -4,13 +4,14 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -23,34 +24,25 @@ enum class ThemeOption(
     val description: String,
     val swatches: List<Color>
 ) {
-    SYSTEM("system", "Padrão do sistema", "Cores e modo do seu dispositivo", listOf(Color(0xFF6750A4), Color(0xFF006A6A), Color(0xFFE8DEF8))),
-    LIGHT("light", "Claro", "Azul limpo para o dia", listOf(Color(0xFF1D5FA7), Color(0xFF006A69), Color(0xFFF7F9FC))),
-    DARK("dark", "Escuro", "Contraste discreto para a noite", listOf(Color(0xFFAEC6FF), Color(0xFF8FE9E3), Color(0xFF111418))),
-    AURORA("aurora", "Aurora", "Turquesa e azul profundo", listOf(Color(0xFF006A6A), Color(0xFF315E91), Color(0xFFE9F7F5))),
-    OCEAN("ocean", "Oceano", "Azul cristalino e índigo", listOf(Color(0xFF00658B), Color(0xFF3C5FAD), Color(0xFFEFF8FF))),
-    FOREST("forest", "Floresta", "Verde vivo e âmbar suave", listOf(Color(0xFF2D6A24), Color(0xFF745F00), Color(0xFFF3F8EE))),
     CORAL("coral", "Coral", "Coral quente e petróleo", listOf(Color(0xFF9B4034), Color(0xFF006C68), Color(0xFFFFF7F4))),
     BERRY("berry", "Framboesa", "Vinho vibrante e dourado", listOf(Color(0xFF963B5B), Color(0xFF775A00), Color(0xFFFFF7F8))),
     MIDNIGHT("midnight", "Meia-noite", "Azul elétrico no escuro", listOf(Color(0xFFB5C6FF), Color(0xFF8BE9E1), Color(0xFF0F141C)));
 
     companion object {
-        fun fromKey(key: String): ThemeOption = entries.firstOrNull { it.key == key } ?: SYSTEM
+        fun fromKey(key: String): ThemeOption = entries.firstOrNull { it.key == key } ?: MIDNIGHT
     }
 }
 
 @Composable
-fun RemindrTheme(option: ThemeOption, content: @Composable () -> Unit) {
-    val context = LocalContext.current
+fun RemindrTheme(
+    option: ThemeOption,
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit
+) {
     val colorScheme = when (option) {
-        ThemeOption.SYSTEM -> if (isSystemInDarkTheme()) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        ThemeOption.LIGHT -> clearScheme
-        ThemeOption.DARK -> darkScheme
-        ThemeOption.AURORA -> auroraScheme
-        ThemeOption.OCEAN -> oceanScheme
-        ThemeOption.FOREST -> forestScheme
-        ThemeOption.CORAL -> coralScheme
-        ThemeOption.BERRY -> berryScheme
-        ThemeOption.MIDNIGHT -> midnightScheme
+        ThemeOption.CORAL -> if (darkTheme) deriveScheme(coralScheme, true) else coralScheme
+        ThemeOption.BERRY -> if (darkTheme) deriveScheme(berryScheme, true) else berryScheme
+        ThemeOption.MIDNIGHT -> if (darkTheme) midnightScheme else deriveScheme(midnightScheme, false)
     }
     MaterialTheme(colorScheme = colorScheme, typography = RemindrTypography, shapes = RemindrShapes, content = content)
 }
@@ -78,46 +70,6 @@ private val RemindrShapes = Shapes(
     extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
 )
 
-private val clearScheme = lightColorScheme(
-    primary = Color(0xFF1D5FA7), onPrimary = Color.White, primaryContainer = Color(0xFFD7E8FF), onPrimaryContainer = Color(0xFF001C37),
-    secondary = Color(0xFF006A69), onSecondary = Color.White, secondaryContainer = Color(0xFF8FF2EF), onSecondaryContainer = Color(0xFF00201F),
-    tertiary = Color(0xFF745B00), onTertiary = Color.White, tertiaryContainer = Color(0xFFFFE08A), onTertiaryContainer = Color(0xFF241A00),
-    background = Color(0xFFF7F9FC), onBackground = Color(0xFF171C22), surface = Color(0xFFF7F9FC), onSurface = Color(0xFF171C22),
-    surfaceVariant = Color(0xFFDEE4EC), onSurfaceVariant = Color(0xFF42474E), outline = Color(0xFF73777F), error = Color(0xFFBA1A1A)
-)
-
-private val darkScheme = darkColorScheme(
-    primary = Color(0xFFAEC6FF), onPrimary = Color(0xFF003061), primaryContainer = Color(0xFF194777), onPrimaryContainer = Color(0xFFD8E2FF),
-    secondary = Color(0xFF8FE9E3), onSecondary = Color(0xFF003735), secondaryContainer = Color(0xFF00504D), onSecondaryContainer = Color(0xFFAAF4EF),
-    tertiary = Color(0xFFFFDEA1), onTertiary = Color(0xFF3E2E00), tertiaryContainer = Color(0xFF5A4300), onTertiaryContainer = Color(0xFFFFE2A5),
-    background = Color(0xFF111418), onBackground = Color(0xFFE1E2E8), surface = Color(0xFF111418), onSurface = Color(0xFFE1E2E8),
-    surfaceVariant = Color(0xFF42474F), onSurfaceVariant = Color(0xFFC2C7D0), outline = Color(0xFF8C9199), error = Color(0xFFFFB4AB)
-)
-
-private val auroraScheme = lightColorScheme(
-    primary = Color(0xFF006A6A), onPrimary = Color.White, primaryContainer = Color(0xFF9CF1F0), onPrimaryContainer = Color(0xFF002020),
-    secondary = Color(0xFF315E91), onSecondary = Color.White, secondaryContainer = Color(0xFFD4E3FF), onSecondaryContainer = Color(0xFF001C37),
-    tertiary = Color(0xFF6A5F00), onTertiary = Color.White, tertiaryContainer = Color(0xFFF7E95F), onTertiaryContainer = Color(0xFF201C00),
-    background = Color(0xFFF4FBFA), onBackground = Color(0xFF161D1D), surface = Color(0xFFF4FBFA), onSurface = Color(0xFF161D1D),
-    surfaceVariant = Color(0xFFD8E5E4), onSurfaceVariant = Color(0xFF3F4949), outline = Color(0xFF6F7A79), error = Color(0xFFBA1A1A)
-)
-
-private val oceanScheme = lightColorScheme(
-    primary = Color(0xFF00658B), onPrimary = Color.White, primaryContainer = Color(0xFFC5EAFF), onPrimaryContainer = Color(0xFF001E2D),
-    secondary = Color(0xFF3C5FAD), onSecondary = Color.White, secondaryContainer = Color(0xFFDBE1FF), onSecondaryContainer = Color(0xFF001849),
-    tertiary = Color(0xFF785800), onTertiary = Color.White, tertiaryContainer = Color(0xFFFFE08D), onTertiaryContainer = Color(0xFF251A00),
-    background = Color(0xFFF5FAFF), onBackground = Color(0xFF171C21), surface = Color(0xFFF5FAFF), onSurface = Color(0xFF171C21),
-    surfaceVariant = Color(0xFFDBE4EA), onSurfaceVariant = Color(0xFF3F484D), outline = Color(0xFF6F787E), error = Color(0xFFBA1A1A)
-)
-
-private val forestScheme = lightColorScheme(
-    primary = Color(0xFF2D6A24), onPrimary = Color.White, primaryContainer = Color(0xFFAFF39F), onPrimaryContainer = Color(0xFF002204),
-    secondary = Color(0xFF745F00), onSecondary = Color.White, secondaryContainer = Color(0xFFFFE16F), onSecondaryContainer = Color(0xFF241A00),
-    tertiary = Color(0xFF006875), onTertiary = Color.White, tertiaryContainer = Color(0xFF9EEFFD), onTertiaryContainer = Color(0xFF001F25),
-    background = Color(0xFFF5F9F0), onBackground = Color(0xFF181D17), surface = Color(0xFFF5F9F0), onSurface = Color(0xFF181D17),
-    surfaceVariant = Color(0xFFDFE5D9), onSurfaceVariant = Color(0xFF444940), outline = Color(0xFF747970), error = Color(0xFFBA1A1A)
-)
-
 private val coralScheme = lightColorScheme(
     primary = Color(0xFF9B4034), onPrimary = Color.White, primaryContainer = Color(0xFFFFDAD4), onPrimaryContainer = Color(0xFF3F0503),
     secondary = Color(0xFF006C68), onSecondary = Color.White, secondaryContainer = Color(0xFF74F7F0), onSecondaryContainer = Color(0xFF00201F),
@@ -141,3 +93,53 @@ private val midnightScheme = darkColorScheme(
     background = Color(0xFF0F141C), onBackground = Color(0xFFE0E2EA), surface = Color(0xFF0F141C), onSurface = Color(0xFFE0E2EA),
     surfaceVariant = Color(0xFF43474F), onSurfaceVariant = Color(0xFFC3C6D0), outline = Color(0xFF8D919A), error = Color(0xFFFFB4AB)
 )
+
+
+internal fun deriveScheme(base: ColorScheme, dark: Boolean): ColorScheme {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(base.primary.toArgb(), hsv)
+    fun tone(sat: Float, value: Float): Color = Color.hsv(hsv[0], sat, value)
+    fun accent(color: Color): Color = when {
+        dark && color.luminance() < 0.28f -> lerp(color, Color.White, 0.40f)
+        !dark && color.luminance() > 0.45f -> lerp(color, Color.Black, 0.32f)
+        else -> color
+    }
+    fun contentOn(color: Color): Color = if (color.luminance() > 0.5f) Color(0xFF111111) else Color.White
+
+    val primary = accent(base.primary)
+    val secondary = accent(base.secondary)
+    val tertiary = accent(base.tertiary)
+    val background = if (dark) tone(0.30f, 0.08f) else tone(0.05f, 0.985f)
+
+    return base.copy(
+        primary = primary,
+        onPrimary = contentOn(primary),
+        primaryContainer = if (dark) lerp(primary, Color.Black, 0.62f) else lerp(primary, Color.White, 0.80f),
+        onPrimaryContainer = if (dark) lerp(primary, Color.White, 0.80f) else lerp(primary, Color.Black, 0.65f),
+        secondary = secondary,
+        onSecondary = contentOn(secondary),
+        secondaryContainer = if (dark) lerp(secondary, Color.Black, 0.62f) else lerp(secondary, Color.White, 0.80f),
+        onSecondaryContainer = if (dark) lerp(secondary, Color.White, 0.80f) else lerp(secondary, Color.Black, 0.65f),
+        tertiary = tertiary,
+        onTertiary = contentOn(tertiary),
+        tertiaryContainer = if (dark) lerp(tertiary, Color.Black, 0.62f) else lerp(tertiary, Color.White, 0.80f),
+        onTertiaryContainer = if (dark) lerp(tertiary, Color.White, 0.80f) else lerp(tertiary, Color.Black, 0.65f),
+        background = background,
+        onBackground = if (dark) tone(0.06f, 0.95f) else tone(0.30f, 0.10f),
+        surface = background,
+        onSurface = if (dark) tone(0.06f, 0.95f) else tone(0.30f, 0.10f),
+        surfaceVariant = if (dark) tone(0.22f, 0.20f) else tone(0.09f, 0.92f),
+        onSurfaceVariant = if (dark) tone(0.10f, 0.74f) else tone(0.20f, 0.38f),
+        outline = if (dark) tone(0.12f, 0.52f) else tone(0.12f, 0.50f),
+        outlineVariant = if (dark) tone(0.20f, 0.30f) else tone(0.12f, 0.82f),
+        surfaceContainerLowest = if (dark) tone(0.30f, 0.05f) else Color.White,
+        surfaceContainerLow = if (dark) tone(0.28f, 0.11f) else tone(0.06f, 0.965f),
+        surfaceContainer = if (dark) tone(0.26f, 0.14f) else tone(0.07f, 0.945f),
+        surfaceContainerHigh = if (dark) tone(0.24f, 0.18f) else tone(0.08f, 0.925f),
+        surfaceContainerHighest = if (dark) tone(0.22f, 0.22f) else tone(0.09f, 0.90f),
+        error = if (dark) Color(0xFFFFB4AB) else Color(0xFFBA1A1A),
+        onError = if (dark) Color(0xFF690005) else Color.White,
+        errorContainer = if (dark) Color(0xFF93000A) else Color(0xFFFFDAD6),
+        onErrorContainer = if (dark) Color(0xFFFFDAD6) else Color(0xFF410002)
+    )
+}
