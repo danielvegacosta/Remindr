@@ -4,38 +4,51 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import com.vega.remindr.data.RemindrDatabase
 import com.vega.remindr.model.Birthday
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.ZoneId
+import java.time.ZonedDateTime
 
 object ReminderScheduler {
     private const val EXTRA_ID = "birthday_id"
 
     fun scheduleAll(context: Context) {
-        val database = RemindrDatabase(context)
-        database.birthdays().forEach { schedule(context, it) }
+        val database = RemindrDatabase(context.applicationContext)
+        try {
+            database.birthdays().forEach { birthday ->
+                schedule(context, birthday)
+                runCatching { BirthdayReceiver.deliverIfDue(context, birthday, database) }
+            }
+        } finally {
+            database.close()
+        }
     }
 
     fun schedule(context: Context, birthday: Birthday) {
         val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
-        val day = minOf(birthday.birthDate.dayOfMonth, birthday.birthDate.month.length(LocalDate.now().isLeapYear))
-        var next = LocalDateTime.of(LocalDate.of(LocalDate.now().year, birthday.birthDate.month, day), LocalTime.of(9, 0))
-        if (!next.isAfter(LocalDateTime.now())) next = next.plusYears(1)
+        val now = ZonedDateTime.now(ZoneId.systemDefault())
+        val triggerAt = ReminderDateCalculator.nextTrigger(birthday.birthDate, now).toInstant().toEpochMilli()
         val pendingIntent = pendingIntent(context, birthday.id)
-        val triggerAt = next.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        if (alarmManager.canScheduleExactAlarms()) {
+
+        val exactScheduled = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || runCatching {
+            alarmManager.canScheduleExactAlarms()
+        }.getOrDefault(false)
+        val scheduledExactly = exactScheduled && runCatching {
             alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-        } else {
-            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+        }.isSuccess
+        if (!scheduledExactly) {
+            runCatching {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+            }.onFailure {
+                runCatching { alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent) }
+            }
         }
     }
 
     fun cancel(context: Context, id: Long) {
         val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
-        alarmManager.cancel(pendingIntent(context, id))
+        runCatching { alarmManager.cancel(pendingIntent(context, id)) }
     }
 
     fun idFrom(intent: Intent): Long = intent.getLongExtra(EXTRA_ID, -1)

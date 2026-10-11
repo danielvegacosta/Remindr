@@ -6,6 +6,7 @@ interface BirthdayRepository {
     fun birthdays(): List<Birthday>
     fun birthday(id: Long): Birthday?
     fun insert(birthday: Birthday): Long
+    fun insertAll(birthdays: List<Birthday>): Int
     fun update(birthday: Birthday): Boolean
     fun delete(id: Long): Boolean
 }
@@ -18,6 +19,8 @@ class LocalBirthdayRepository(
     override fun birthday(id: Long): Birthday? = database.birthday(id)
 
     override fun insert(birthday: Birthday): Long = database.insert(birthday)
+
+    override fun insertAll(birthdays: List<Birthday>): Int = database.insertAll(birthdays)
 
     override fun update(birthday: Birthday): Boolean = database.update(birthday)
 

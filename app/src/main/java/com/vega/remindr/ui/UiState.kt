@@ -50,6 +50,8 @@ internal data class Popup(
 
 internal enum class PinMode { Create, Reset }
 
+internal enum class BackupPasswordMode { Export, Import }
+
 internal enum class HomeFilter(val label: String) {
     Upcoming("Próximos"),
     Month("Este mês"),
