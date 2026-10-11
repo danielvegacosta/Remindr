@@ -9,6 +9,8 @@ import android.Manifest
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import java.nio.charset.StandardCharsets
+import kotlinx.coroutines.delay
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -64,8 +66,21 @@ internal fun RemindrApp(
     var screen by remember {
         mutableStateOf<Screen>(if (!security.introSeen()) Screen.Intro else Screen.Lock)
     }
-    var popup by remember { mutableStateOf<Popup?>(null) }
+    val initialPinLockout = remember { security.pinLockoutRemainingMillis() }
+    var pinLockoutRemainingMillis by remember { mutableStateOf(initialPinLockout) }
+    var popup by remember {
+        mutableStateOf(
+            if (initialPinLockout > 0L) Popup(
+                "Acesso por PIN bloqueado",
+                "Após 5 tentativas incorretas, o acesso por PIN foi bloqueado por 1 minuto. Aguarde o fim do bloqueio para tentar novamente.",
+                "Entendi"
+            ) {} else null
+        )
+    }
     var pinMode by remember { mutableStateOf<PinMode?>(null) }
+    var backupPasswordMode by remember { mutableStateOf<BackupPasswordMode?>(null) }
+    var pendingBackupPassword by remember { mutableStateOf<String?>(null) }
+    var pendingImportSource by remember { mutableStateOf<String?>(null) }
 
     fun refresh() {
         birthdays = repository.birthdays().sortedBy { it.daysUntil() }
@@ -125,15 +140,39 @@ internal fun RemindrApp(
         }
     }
 
+    fun importBackupData(source: String, password: String? = null) {
+        runCatching {
+            val imported = BackupCodec.decode(source, password)
+            repository.insertAll(imported)
+        }.onSuccess { count ->
+            refresh()
+            popup = Popup("Backup importado", "$count memórias foram adicionadas à sua lista.", "Concluir") {}
+        }.onFailure {
+            popup = Popup(
+                "Falha ao importar backup",
+                "O arquivo é inválido, está danificado ou a senha está incorreta. Nenhuma memória foi alterada.",
+                "Entendi"
+            ) {}
+        }
+    }
+
     val exportBackup = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
     ) { uri ->
-        if (uri != null) runCatching {
-            context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
-                writer.write(BackupCodec.encode(repository.birthdays()))
+        val password = pendingBackupPassword
+        pendingBackupPassword = null
+        if (uri != null && password != null) {
+            runCatching {
+                val output = context.contentResolver.openOutputStream(uri)
+                    ?: throw IllegalStateException("Não foi possível abrir o arquivo de destino.")
+                output.bufferedWriter(StandardCharsets.UTF_8).use { writer ->
+                    writer.write(BackupCodec.encode(repository.birthdays(), password))
+                }
+            }.onSuccess {
+                popup = Popup("Backup exportado", "Seu backup foi criptografado. Guarde a senha: ela será necessária para restaurar o arquivo.", "Concluir") {}
+            }.onFailure {
+                popup = Popup("Falha ao exportar backup", "Não foi possível salvar o backup. Tente novamente.", "Entendi") {}
             }
-        }.onSuccess {
-            popup = Popup("Backup exportado", "Seu arquivo do Remindr foi salvo com segurança.", "Concluir") {}
         }
     }
 
@@ -141,19 +180,37 @@ internal fun RemindrApp(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) runCatching {
-            val imported = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
-                BackupCodec.decode(reader.readText())
-            }.orEmpty()
-            if (imported.isEmpty()) error("empty backup")
-            imported.forEach { repository.insert(it) }
-            imported.size
-        }.onSuccess { count ->
-            refresh()
-            popup = Popup("Backup importado", "$count memórias foram adicionadas à sua lista.", "Concluir") {}
+            val input = context.contentResolver.openInputStream(uri)
+                ?: throw IllegalStateException("Não foi possível abrir o arquivo selecionado.")
+            val bytes = input.use { it.readNBytes(BackupCodec.MAX_BACKUP_BYTES + 1) }
+            require(bytes.size <= BackupCodec.MAX_BACKUP_BYTES) { "Arquivo de backup grande demais." }
+            String(bytes, StandardCharsets.UTF_8)
+        }.onSuccess { source ->
+            if (BackupCodec.requiresPassword(source)) {
+                pendingImportSource = source
+                backupPasswordMode = BackupPasswordMode.Import
+            } else {
+                importBackupData(source)
+            }
+        }.onFailure {
+            popup = Popup(
+                "Falha ao importar backup",
+                "Não foi possível ler o arquivo selecionado. Verifique se ele é um backup válido. Nenhuma memória foi alterada.",
+                "Entendi"
+            ) {}
         }
     }
 
-    LaunchedEffect(Unit) { ReminderScheduler.scheduleAll(context) }
+    LaunchedEffect(screen, pinLockoutRemainingMillis > 0L) {
+        if (screen == Screen.Lock) {
+            while (true) {
+                val remaining = security.pinLockoutRemainingMillis()
+                pinLockoutRemainingMillis = remaining
+                if (remaining <= 0L) break
+                delay(minOf(remaining, 1_000L))
+            }
+        }
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -179,9 +236,30 @@ internal fun RemindrApp(
                 Screen.Lock -> LockScreen(
                     hasPin = security.hasPin,
                     biometricEnabled = security.biometricEnabled,
+                    pinInputEnabled = pinLockoutRemainingMillis <= 0L,
+                    lockoutRemainingMillis = pinLockoutRemainingMillis,
                     onPin = { pin ->
-                        if (security.verifies(pin)) screen = Screen.Main
-                        else popup = Popup("PIN incorreto", "Tente novamente ou use a biometria.", "Tentar de novo") {}
+                        when (val result = security.verifyPin(pin)) {
+                            SecurityStore.PinVerification.Success -> {
+                                pinLockoutRemainingMillis = 0L
+                                screen = Screen.Main
+                            }
+                            is SecurityStore.PinVerification.Incorrect -> {
+                                popup = Popup(
+                                    "PIN incorreto",
+                                    "Tente novamente ou use a biometria. Restam ${result.attemptsRemaining} tentativas antes do bloqueio temporário.",
+                                    "Tentar de novo"
+                                ) {}
+                            }
+                            is SecurityStore.PinVerification.Locked -> {
+                                pinLockoutRemainingMillis = result.remainingMillis
+                                popup = Popup(
+                                    "Acesso por PIN bloqueado",
+                                    "Após 5 tentativas incorretas, o acesso por PIN foi bloqueado por 1 minuto. Aguarde o fim do bloqueio para tentar novamente.",
+                                    "Entendi"
+                                ) {}
+                            }
+                        }
                     },
                     onBiometric = {
                         authenticate({ screen = Screen.Main }) { error ->
@@ -202,7 +280,7 @@ internal fun RemindrApp(
                     onSecurity = { screen = Screen.Security },
                     onThemes = { screen = Screen.Themes },
                     onImport = { importBackup.launch(arrayOf("text/plain")) },
-                    onExport = { exportBackup.launch("remindr_backup.txt") },
+                    onExport = { backupPasswordMode = BackupPasswordMode.Export },
                     onEnableNotifications = {
                         when {
                             !hasNotificationPermission() -> {
@@ -293,8 +371,32 @@ internal fun RemindrApp(
         onSaved = { pin ->
             security.setPin(pin)
             pinMode = null
+            pinLockoutRemainingMillis = 0L
             popup = Popup("PIN salvo", "A proteção está ativada com sucesso.", "Concluir") {}
             if (mode == PinMode.Reset) screen = Screen.Main
+        }
+    ) }
+
+    backupPasswordMode?.let { mode -> BackupPasswordDialog(
+        mode = mode,
+        onDismiss = {
+            backupPasswordMode = null
+            pendingImportSource = null
+        },
+        onSubmit = { password ->
+            backupPasswordMode = null
+            when (mode) {
+                BackupPasswordMode.Export -> {
+                    pendingBackupPassword = password
+                    exportBackup.launch("remindr_backup.txt")
+                }
+                BackupPasswordMode.Import -> {
+                    val source = pendingImportSource
+                    pendingImportSource = null
+                    if (source != null) importBackupData(source, password)
+                    else popup = Popup("Falha ao importar backup", "O arquivo selecionado não está mais disponível.", "Entendi") {}
+                }
+            }
         }
     ) }
 }

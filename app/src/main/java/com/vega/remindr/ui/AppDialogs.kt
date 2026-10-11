@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,6 +27,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +40,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -208,6 +212,107 @@ internal fun PinDialog(mode: PinMode, onDismiss: () -> Unit, onSaved: (String) -
                     onDelete = { erase() },
                     keyHeight = 54.dp
                 )
+            }
+        }
+    }
+}
+
+
+@Composable
+internal fun BackupPasswordDialog(
+    mode: BackupPasswordMode,
+    errorMessage: String? = null,
+    onDismiss: () -> Unit,
+    onSubmit: (String) -> Unit
+) {
+    val cs = MaterialTheme.colorScheme
+    var password by remember(mode) { mutableStateOf("") }
+    var confirmation by remember(mode) { mutableStateOf("") }
+    val passwordsMatch = mode == BackupPasswordMode.Import || password == confirmation
+    val canSubmit = password.length in 8..256 && passwordsMatch
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = dialogContainer(),
+            border = BorderStroke(1.dp, dialogBorder()),
+            modifier = Modifier.padding(horizontal = 28.dp).fillMaxWidth().widthIn(max = 420.dp)
+        ) {
+            Column(Modifier.padding(24.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(AvatarShape)
+                        .background(cs.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Outlined.Lock, null, tint = cs.onPrimaryContainer, modifier = Modifier.size(26.dp))
+                }
+                Text(
+                    text = if (mode == BackupPasswordMode.Export) "Proteger backup" else "Descriptografar backup",
+                    color = cs.onSurface,
+                    fontSize = 21.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.3).sp,
+                    modifier = Modifier.padding(top = 20.dp)
+                )
+                Text(
+                    text = if (mode == BackupPasswordMode.Export)
+                        "Crie uma senha de, no mínimo, 8 caracteres. Ela será necessária para importar este arquivo futuramente."
+                    else
+                        "Digite a senha usada na exportação. O arquivo só será importado depois que a sua senha for validada.",
+                    color = cs.onSurfaceVariant,
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { if (it.length <= 256) password = it },
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    singleLine = true,
+                    label = { Text("Senha do backup") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    isError = errorMessage != null
+                )
+                if (mode == BackupPasswordMode.Export) {
+                    OutlinedTextField(
+                        value = confirmation,
+                        onValueChange = { if (it.length <= 256) confirmation = it },
+                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                        singleLine = true,
+                        label = { Text("Confirmar senha") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        isError = confirmation.isNotEmpty() && !passwordsMatch
+                    )
+                    if (confirmation.isNotEmpty() && !passwordsMatch) {
+                        Text("As senhas não coincidem.", color = cs.error, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+                    }
+                }
+                if (errorMessage != null) {
+                    Text(errorMessage, color = cs.error, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    FilledTonalButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = CircleShape
+                    ) { Text("Cancelar", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+                    Button(
+                        onClick = { if (canSubmit) onSubmit(password) },
+                        enabled = canSubmit,
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = CircleShape
+                    ) { Text(if (mode == BackupPasswordMode.Export) "Continuar" else "Importar", fontSize = 15.sp, fontWeight = FontWeight.Bold) }
+                }
             }
         }
     }

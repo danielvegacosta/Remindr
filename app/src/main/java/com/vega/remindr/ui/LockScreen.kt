@@ -80,7 +80,9 @@ internal fun LockScreen(
     onPin: (String) -> Unit,
     onBiometric: () -> Unit,
     onForgot: () -> Unit,
-    onEnter: () -> Unit
+    onEnter: () -> Unit,
+    pinInputEnabled: Boolean = true,
+    lockoutRemainingMillis: Long = 0L
 ) {
     val cs = MaterialTheme.colorScheme
     var pin by remember { mutableStateOf("") }
@@ -189,9 +191,19 @@ internal fun LockScreen(
                     if (roomy) {
                         Spacer(Modifier.height(18.dp))
                     }
-                    LockTitle(subtitle)
+                    LockTitle(if (pinInputEnabled) subtitle else "PIN temporariamente bloqueado")
+                    if (!pinInputEnabled) {
+                        val secondsRemaining = ((lockoutRemainingMillis + 999L) / 1_000L).coerceAtLeast(0L)
+                        Text(
+                            "Tente novamente em ${secondsRemaining / 60}:${(secondsRemaining % 60).toString().padStart(2, '0')}.",
+                            color = cs.error,
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
                     Spacer(Modifier.height(if (roomy) 22.dp else 16.dp))
-                    PinBoxes(filled = pin.length, enabled = true)
+                    PinBoxes(filled = pin.length, enabled = pinInputEnabled)
                     Spacer(Modifier.height(14.dp))
                     if (!biometricEnabled) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -210,8 +222,9 @@ internal fun LockScreen(
                     Spacer(Modifier.weight(1f))
 
                     FlatNumpad(
-                        onNumber = { if (pin.length < 4) pin += it },
-                        onDelete = { if (pin.isNotEmpty()) pin = pin.dropLast(1) },
+                        onNumber = { if (pinInputEnabled && pin.length < 4) pin += it },
+                        onDelete = { if (pinInputEnabled && pin.isNotEmpty()) pin = pin.dropLast(1) },
+                        keysEnabled = pinInputEnabled,
                         modifier = Modifier.offset(y = 12.dp),
                         leftSlot = {
                             if (biometricEnabled) {
@@ -372,6 +385,7 @@ internal fun FlatNumpad(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
     keyHeight: Dp = 60.dp,
+    keysEnabled: Boolean = true,
     leftSlot: @Composable () -> Unit = {}
 ) {
     val cs = MaterialTheme.colorScheme
@@ -380,7 +394,7 @@ internal fun FlatNumpad(
         rows.forEach { row ->
             Row(Modifier.fillMaxWidth()) {
                 row.forEach { key ->
-                    FlatKey(Modifier.weight(1f), keyHeight, { onNumber(key) }) {
+                    FlatKey(Modifier.weight(1f), keyHeight, { onNumber(key) }, enabled = keysEnabled) {
                         Text(key, color = cs.onSurface, fontSize = 30.sp, fontWeight = FontWeight.Medium)
                     }
                 }
@@ -388,10 +402,10 @@ internal fun FlatNumpad(
         }
         Row(Modifier.fillMaxWidth()) {
             Box(Modifier.weight(1f).height(keyHeight), contentAlignment = Alignment.Center) { leftSlot() }
-            FlatKey(Modifier.weight(1f), keyHeight, { onNumber("0") }) {
+            FlatKey(Modifier.weight(1f), keyHeight, { onNumber("0") }, enabled = keysEnabled) {
                 Text("0", color = cs.onSurface, fontSize = 30.sp, fontWeight = FontWeight.Medium)
             }
-            FlatKey(Modifier.weight(1f), keyHeight, onDelete) {
+            FlatKey(Modifier.weight(1f), keyHeight, onDelete, enabled = keysEnabled) {
                 Icon(
                     Icons.AutoMirrored.Outlined.ArrowBack,
                     "Apagar",
@@ -404,12 +418,19 @@ internal fun FlatNumpad(
 }
 
 @Composable
-internal fun FlatKey(modifier: Modifier, height: Dp, onClick: () -> Unit, content: @Composable () -> Unit) {
+internal fun FlatKey(
+    modifier: Modifier,
+    height: Dp,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit
+) {
     Box(
         modifier = modifier
             .height(height)
             .clip(RoundedCornerShape(20.dp))
-            .clickable(onClick = onClick),
+            .alpha(if (enabled) 1f else 0.35f)
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) { content() }
 }

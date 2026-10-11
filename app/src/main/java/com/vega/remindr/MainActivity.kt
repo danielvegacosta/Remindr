@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
 import com.vega.remindr.data.RemindrDatabase
+import com.vega.remindr.notifications.ReminderScheduler
 import com.vega.remindr.data.LocalBirthdayRepository
 import com.vega.remindr.data.BirthdayRepository
 import com.vega.remindr.security.SecurityStore
@@ -41,6 +42,11 @@ class MainActivity : FragmentActivity() {
                 biometricAvailable = ::biometricAvailable
             )
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::database.isInitialized) ReminderScheduler.scheduleAll(this)
     }
 
     private fun enableFullScreenLayout() {
