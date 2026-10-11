@@ -206,6 +206,16 @@ flowchart LR
 
 ## Como executar
 
+### Instalar pelo APK
+
+Se você quer apenas instalar e usar o Remindr, não precisa clonar o repositório nem compilar o projeto. O APK para instalação direta está disponível na seção [Releases do Remindr](https://github.com/danielvegacosta/remindr/releases).
+
+Abra a versão desejada, expanda a seção **Assets**, baixe o arquivo `.apk` e abra-o no dispositivo Android para instalar. Dependendo das configurações do aparelho, o Android poderá pedir autorização para instalar aplicativos dessa origem.
+
+### Executar a partir do código-fonte
+
+Se você quer abrir o projeto, executar pelo Android Studio ou modificar o código, siga os passos abaixo.
+
 ### Antes de começar
 
 | Item | Versão |
